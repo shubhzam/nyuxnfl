@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Two Windows, One Throw</title>
+<meta name="description" content="Two real NFL plays where receivers had the same time in space, at different moments.">
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f5f1; --card: #ffffff; --ink: #1c2330; --muted: #5d6879; --line: #dcdfe4;
+    --turf: #eef3ec; --turf-line: #cad7c6; --los: #3b5bdb; --first: #e0b100;
+    --closed: #e7e9ed; --either: #39424f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 28px 16px 56px; }
+  h1 { font-size: 30px; line-height: 1.15; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .lede { color: var(--muted); max-width: 780px; margin: 0 0 6px; }
+  .headline { max-width: 780px; margin: 10px 0 18px; font-size: 16px; }
+  .controls { position: sticky; top: 0; z-index: 5; display: flex; gap: 14px; align-items: center;
+              background: var(--bg); padding: 10px 0; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+  button { font: inherit; font-weight: 600; padding: 6px 16px; border-radius: 6px; border: 1px solid var(--ink);
+           background: var(--ink); color: #fff; cursor: pointer; min-width: 88px; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--los); outline-offset: 2px; }
+  input[type=range] { flex: 1; min-width: 160px; accent-color: var(--ink); }
+  #time { font-variant-numeric: tabular-nums; font-weight: 700; min-width: 170px; text-align: right; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: var(--muted); margin: -6px 0 16px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; }
+  .plays { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 500px), 1fr)); gap: 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 16px 12px; min-width: 0; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+         color: var(--muted); }
+  .card h2 { font-size: 19px; margin: 2px 0 0; }
+  .meta { color: var(--muted); font-size: 13px; margin: 2px 0 10px; }
+  .totals { display: flex; gap: 22px; flex-wrap: wrap; margin: 6px 0 12px; }
+  .stat .v { font-size: 28px; font-weight: 750; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .stat.main .v { color: var(--ink); }
+  svg { display: block; width: 100%; height: auto; }
+  .desc { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+  .yard-label { font-size: 10px; fill: #7d8a78; }
+  .rec-label { font-size: 11px; font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+  .sep-label { font-size: 10px; font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+  .strip-label { font-size: 12px; fill: var(--ink); }
+  .strip-sub { font-size: 10px; fill: var(--muted); }
+  .tick { font-size: 10px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+  section.method { margin-top: 32px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 20px; }
+  section.method > div { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  section.method h3 { font-size: 15px; margin: 0 0 8px; }
+  section.method p, section.method li { font-size: 14px; color: var(--muted); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 600; }
+  @media (max-width: 620px) {
+    h1 { font-size: 24px; }
+    .controls { flex-wrap: wrap; }
+    #time { text-align: left; min-width: 0; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Two Windows, One Throw</h1>
+  <p class="lede">How much time did the offense have with at least one of its two wide receivers in space before the throw? Two real 2021 plays, measured over the last second before release.</p>
+  <p class="headline" id="headline"></p>
+  <div class="controls">
+    <button id="play" type="button">Play</button>
+    <input id="slider" type="range" min="0" max="9" step="1" value="0" aria-label="Time before release">
+    <span id="time" aria-live="polite"></span>
+  </div>
+  <div class="legend" id="legend"></div>
+  <div class="plays" id="plays"></div>
+  <section class="method">
+    <div>
+      <h3>How it is measured</h3>
+      <p id="method"></p>
+      <p>Passing lanes, pass rush pressure, and the quarterback's reads are outside the measurement. It describes the options the two receivers created, not where the ball went: in both plays shown, the pass went to a tight end.</p>
+    </div>
+    <div>
+      <h3>Threshold sensitivity</h3>
+      <table id="sens"></table>
+    </div>
+    <div>
+      <h3>Plays screened</h3>
+      <table id="funnel"></table>
+      <p id="context"></p>
+    </div>
+  </section>
+</main>
+<script>
+const D = {"threshold":2.0,"fps":10,"window":10,"fieldWidth":53.333,"times":[-1.0,-0.9,-0.8,-0.7,-0.6,-0.5,-0.4,-0.3,-0.2,-0.1],"xDomain":[-12.0,30.0],"headline":"In both Cover-3 plays, each wide receiver was in space for 0.6 s in the last second before the throw. In play A (ATL vs TB) they were open at the same moments, so the offense had 0.6 s with at least one receiver in space. In play B (DEN vs LV) they took turns, so it had 1.0 s.","plays":[{"key":"A","label":"Windows stacked","gameId":2021091910,"playId":1621,"week":2,"offense":"ATL","defense":"TB","quarter":2,"clock":"07:00","down":3,"yardsToGo":3,"coverage":"Cover-3","coverageType":"Zone","formation":"SHOTGUN","result":"Complete","description":"(7:00) (Shotgun) M.Ryan pass short right to H.Hurst pushed ob at TB 49 for 6 yards (M.Edwards).","snapToRelease":4.9,"receivers":[{"id":46095,"name":"Calvin Ridley","jersey":18,"aligned":"SLoWR","sep":[3.52,3.24,2.94,2.66,2.38,2.12,1.86,1.6,1.38,1.16],"near":[47877,47877,47877,47877,47877,47877,47877,47877,47877,47877],"open":[true,true,true,true,true,true,false,false,false,false],"trail":[[-4.9,-0.81,34.02],[-4.8,-0.81,34.02],[-4.7,-0.81,34.02],[-4.6,-0.8,34.02],[-4.5,-0.78,34.02],[-4.4,-0.7,34.01],[-4.3,-0.57,34.02],[-4.2,-0.4,34.03],[-4.1,-0.18,34.06],[-4.0,0.13,34.05],[-3.9,0.53,34.04],[-3.8,0.95,34.04],[-3.7,1.43,34.03],[-3.6,1.95,34.03],[-3.5,2.52,34.03],[-3.4,3.12,34.02],[-3.3,3.78,34.02],[-3.2,4.47,34.01],[-3.1,5.2,34.0],[-3.0,5.95,34.01],[-2.9,6.72,34.02],[-2.8,7.51,34.03],[-2.7,8.3,34.06],[-2.6,9.11,34.08],[-2.5,9.93,34.13],[-2.4,10.75,34.19],[-2.3,11.59,34.27],[-2.2,12.43,34.37],[-2.1,13.28,34.49],[-2.0,14.13,34.65],[-1.9,14.97,34.83],[-1.8,15.81,35.03],[-1.7,16.64,35.26],[-1.6,17.48,35.53],[-1.5,18.3,35.81],[-1.4,19.1,36.12],[-1.3,19.9,36.43],[-1.2,20.68,36.77],[-1.1,21.44,37.09],[-1.0,22.17,37.42],[-0.9,22.87,37.75],[-0.8,23.54,38.07],[-0.7,24.18,38.37],[-0.6,24.79,38.67],[-0.5,25.37,38.94],[-0.4,25.91,39.19],[-0.3,26.42,39.42],[-0.2,26.9,39.63],[-0.1,27.36,39.83]],"seconds":0.6},{"id":48374,"name":"Olamide Zaccheaus","jersey":17,"aligned":"SLiWR","sep":[3.64,3.21,2.84,2.53,2.27,2.06,1.87,1.7,1.54,1.41],"near":[46132,46132,46132,46132,46132,46132,46132,46132,46132,46132],"open":[true,true,true,true,true,true,false,false,false,false],"trail":[[-4.9,-2.17,31.03],[-4.8,-2.16,31.04],[-4.7,-2.16,31.04],[-4.6,-2.14,31.04],[-4.5,-2.11,31.05],[-4.4,-2.04,31.05],[-4.3,-1.9,31.05],[-4.2,-1.7,31.05],[-4.1,-1.45,31.05],[-4.0,-1.13,31.05],[-3.9,-0.77,31.04],[-3.8,-0.34,31.01],[-3.7,0.12,30.98],[-3.6,0.64,30.95],[-3.5,1.2,30.9],[-3.4,1.8,30.85],[-3.3,2.43,30.8],[-3.2,3.09,30.75],[-3.1,3.77,30.66],[-3.0,4.48,30.54],[-2.9,5.2,30.4],[-2.8,5.93,30.23],[-2.7,6.66,30.01],[-2.6,7.37,29.74],[-2.5,8.07,29.41],[-2.4,8.75,29.04],[-2.3,9.4,28.62],[-2.2,10.01,28.16],[-2.1,10.59,27.64],[-2.0,11.16,27.1],[-1.9,11.69,26.52],[-1.8,12.21,25.93],[-1.7,12.72,25.32],[-1.6,13.22,24.69],[-1.5,13.69,24.06],[-1.4,14.16,23.44],[-1.3,14.63,22.82],[-1.2,15.09,22.21],[-1.1,15.55,21.61],[-1.0,16.0,21.04],[-0.9,16.44,20.48],[-0.8,16.87,19.95],[-0.7,17.29,19.45],[-0.6,17.69,18.97],[-0.5,18.05,18.52],[-0.4,18.35,18.08],[-0.3,18.6,17.66],[-0.2,18.78,17.26],[-0.1,18.89,16.87]],"seconds":0.6}],"either":0.6,"both":0.6,"eitherSeq":[true,true,true,true,true,true,false,false,false,false],"frames":[{"players":[[33084,"O",-4.8,20.45],[35441,"D",-0.69,23.19],[38588,"D",8.27,20.54],[41232,"O",-7.55,28.36],[41338,"D",6.35,44.17],[41915,"D",-6.75,24.0],[42469,"O",1.46,45.14],[46081,"D",-8.61,28.17],[46094,"O",3.92,9.78],[46095,"O",22.17,37.42],[46132,"D",14.59,17.68],[47788,"D",4.6,33.72],[47797,"O",-1.61,22.51],[47814,"O",-9.13,23.63],[47877,"D",21.22,40.81],[47882,"D",4.58,11.34],[48374,"O",16.0,21.04],[52453,"D",23.3,27.07],[52486,"O",-3.33,24.75],[53433,"O",6.72,31.43],[53461,"D",-8.19,25.73],[53497,"O",-7.04,26.65]],"ball":[-5.32,20.39]},{"players":[[33084,"O",-4.55,19.88],[35441,"D",-0.42,22.89],[38588,"D",8.18,20.05],[41232,"O",-7.55,28.33],[41338,"D",6.47,44.4],[41915,"D",-6.42,23.74],[42469,"O",1.65,45.5],[46081,"D",-8.57,28.2],[46094,"O",4.01,9.21],[46095,"O",22.87,37.75],[46132,"D",15.11,17.56],[47788,"D",4.8,33.38],[47797,"O",-1.37,22.32],[47814,"O",-9.03,23.48],[47877,"D",22.01,40.87],[47882,"D",4.69,10.75],[48374,"O",16.44,20.48],[52453,"D",23.58,26.64],[52486,"O",-3.17,24.66],[53433,"O",6.82,31.27],[53461,"D",-8.15,25.77],[53497,"O",-6.97,26.63]],"ball":[-5.08,19.82]},{"players":[[33084,"O",-4.28,19.3],[35441,"D",-0.14,22.51],[38588,"D",8.04,19.55],[41232,"O",-7.55,28.31],[41338,"D",6.58,44.59],[41915,"D",-6.09,23.43],[42469,"O",1.87,45.78],[46081,"D",-8.5,28.22],[46094,"O",4.1,8.63],[46095,"O",23.54,38.07],[46132,"D",15.63,17.4],[47788,"D",5.01,32.99],[47797,"O",-1.13,22.08],[47814,"O",-8.89,23.31],[47877,"D",22.78,40.91],[47882,"D",4.8,10.16],[48374,"O",16.87,19.95],[52453,"D",23.83,26.19],[52486,"O",-2.99,24.56],[53433,"O",6.92,31.09],[53461,"D",-8.08,25.82],[53497,"O",-6.89,26.61]],"ball":[-4.82,19.24]},{"players":[[33084,"O",-3.99,18.7],[35441,"D",0.16,22.09],[38588,"D",7.85,19.03],[41232,"O",-7.54,28.29],[41338,"D",6.71,44.75],[41915,"D",-5.76,23.07],[42469,"O",2.1,46.0],[46081,"D",-8.41,28.22],[46094,"O",4.19,8.06],[46095,"O",24.18,38.37],[46132,"D",16.14,17.2],[47788,"D",5.23,32.56],[47797,"O",-0.89,21.81],[47814,"O",-8.73,23.1],[47877,"D",23.54,40.95],[47882,"D",4.92,9.56],[48374,"O",17.29,19.45],[52453,"D",24.08,25.69],[52486,"O",-2.79,24.43],[53433,"O",7.03,30.88],[53461,"D",-8.03,25.84],[53497,"O",-6.78,26.59]],"ball":[-4.52,18.67]},{"players":[[33084,"O",-3.7,18.09],[35441,"D",0.45,21.63],[38588,"D",7.6,18.49],[41232,"O",-7.53,28.26],[41338,"D",6.84,44.87],[41915,"D",-5.42,22.67],[42469,"O",2.34,46.17],[46081,"D",-8.31,28.21],[46094,"O",4.29,7.48],[46095,"O",24.79,38.67],[46132,"D",16.63,16.96],[47788,"D",5.46,32.09],[47797,"O",-0.67,21.5],[47814,"O",-8.55,22.88],[47877,"D",24.27,40.99],[47882,"D",5.06,8.96],[48374,"O",17.69,18.97],[52453,"D",24.32,25.19],[52486,"O",-2.57,24.29],[53433,"O",7.15,30.65],[53461,"D",-7.99,25.85],[53497,"O",-6.65,26.56]],"ball":[-4.21,18.07]},{"players":[[33084,"O",-3.41,17.48],[35441,"D",0.73,21.14],[38588,"D",7.31,17.95],[41232,"O",-7.51,28.23],[41338,"D",6.97,44.95],[41915,"D",-5.08,22.22],[42469,"O",2.59,46.28],[46081,"D",-8.2,28.18],[46094,"O",4.4,6.92],[46095,"O",25.37,38.94],[46132,"D",17.11,16.69],[47788,"D",5.68,31.59],[47797,"O",-0.44,21.17],[47814,"O",-8.35,22.65],[47877,"D",24.98,41.02],[47882,"D",5.21,8.39],[48374,"O",18.05,18.52],[52453,"D",24.54,24.68],[52486,"O",-2.34,24.14],[53433,"O",7.27,30.41],[53461,"D",-7.92,25.87],[53497,"O",-6.51,26.51]],"ball":[-3.91,17.49]},{"players":[[33084,"O",-3.12,16.86],[35441,"D",1.01,20.64],[38588,"D",6.99,17.39],[41232,"O",-7.5,28.21],[41338,"D",7.11,44.98],[41915,"D",-4.73,21.76],[42469,"O",2.84,46.32],[46081,"D",-8.1,28.13],[46094,"O",4.51,6.36],[46095,"O",25.91,39.19],[46132,"D",17.54,16.4],[47788,"D",5.89,31.07],[47797,"O",-0.23,20.81],[47814,"O",-8.11,22.4],[47877,"D",25.66,41.03],[47882,"D",5.36,7.86],[48374,"O",18.35,18.08],[52453,"D",24.76,24.17],[52486,"O",-2.11,23.99],[53433,"O",7.4,30.15],[53461,"D",-7.86,25.89],[53497,"O",-6.35,26.47]],"ball":[-3.67,16.83]},{"players":[[33084,"O",-2.83,16.22],[35441,"D",1.26,20.12],[38588,"D",6.65,16.81],[41232,"O",-7.47,28.2],[41338,"D",7.25,44.97],[41915,"D",-4.4,21.25],[42469,"O",3.11,46.31],[46081,"D",-8.01,28.08],[46094,"O",4.62,5.82],[46095,"O",26.42,39.42],[46132,"D",17.93,16.1],[47788,"D",6.1,30.54],[47797,"O",-0.02,20.45],[47814,"O",-7.86,22.14],[47877,"D",26.31,41.02],[47882,"D",5.51,7.37],[48374,"O",18.6,17.66],[52453,"D",24.97,23.67],[52486,"O",-1.85,23.83],[53433,"O",7.53,29.88],[53461,"D",-7.8,25.9],[53497,"O",-6.18,26.41]],"ball":[-3.4,16.17]},{"players":[[33084,"O",-2.57,15.57],[35441,"D",1.5,19.57],[38588,"D",6.27,16.23],[41232,"O",-7.43,28.17],[41338,"D",7.38,44.91],[41915,"D",-4.06,20.7],[42469,"O",3.39,46.25],[46081,"D",-7.92,28.01],[46094,"O",4.74,5.31],[46095,"O",26.9,39.63],[46132,"D",18.25,15.81],[47788,"D",6.31,29.99],[47797,"O",0.17,20.04],[47814,"O",-7.61,21.87],[47877,"D",26.92,41.01],[47882,"D",5.66,6.89],[48374,"O",18.78,17.26],[52453,"D",25.17,23.18],[52486,"O",-1.58,23.67],[53433,"O",7.66,29.6],[53461,"D",-7.75,25.91],[53497,"O",-6.01,26.35]],"ball":[-3.12,15.47]},{"players":[[33084,"O",-2.32,14.92],[35441,"D",1.71,19.01],[38588,"D",5.87,15.63],[41232,"O",-7.39,28.17],[41338,"D",7.52,44.81],[41915,"D",-3.73,20.15],[42469,"O",3.66,46.12],[46081,"D",-7.83,27.92],[46094,"O",4.85,4.81],[46095,"O",27.36,39.83],[46132,"D",18.52,15.51],[47788,"D",6.5,29.44],[47797,"O",0.36,19.62],[47814,"O",-7.35,21.58],[47877,"D",27.49,40.98],[47882,"D",5.81,6.45],[48374,"O",18.89,16.87],[52453,"D",25.36,22.73],[52486,"O",-1.31,23.49],[53433,"O",7.79,29.3],[53461,"D",-7.69,25.91],[53497,"O",-5.82,26.27]],"ball":[-2.84,14.74]}]},{"key":"B","label":"Windows chained","gameId":2021101709,"playId":2778,"week":6,"offense":"DEN","defense":"LV","quarter":3,"clock":"04:59","down":2,"yardsToGo":10,"coverage":"Cover-3","coverageType":"Zone","formation":"SHOTGUN","result":"Complete","description":"(4:59) (Shotgun) T.Bridgewater pass short left to E.Saubert to DEN 24 for 11 yards (J.Abram, C.Littleton).","snapToRelease":3.2,"receivers":[{"id":45267,"name":"Tim Patrick","jersey":81,"aligned":"SLWR","sep":[1.8,1.65,1.73,1.95,2.28,2.67,3.07,3.48,3.89,4.35],"near":[43797,43797,43797,43797,43797,43797,43797,43797,43797,43797],"open":[false,false,false,false,true,true,true,true,true,true],"trail":[[-3.2,-1.04,33.68],[-3.1,-1.02,33.67],[-3.0,-0.96,33.66],[-2.9,-0.86,33.64],[-2.8,-0.69,33.62],[-2.7,-0.48,33.57],[-2.6,-0.19,33.53],[-2.5,0.12,33.45],[-2.4,0.54,33.38],[-2.3,0.99,33.31],[-2.2,1.48,33.22],[-2.1,2.01,33.12],[-2.0,2.59,33.02],[-1.9,3.2,32.9],[-1.8,3.85,32.78],[-1.7,4.54,32.65],[-1.6,5.26,32.52],[-1.5,5.99,32.38],[-1.4,6.75,32.24],[-1.3,7.53,32.1],[-1.2,8.32,31.95],[-1.1,9.12,31.8],[-1.0,9.93,31.64],[-0.9,10.75,31.47],[-0.8,11.57,31.29],[-0.7,12.38,31.09],[-0.6,13.2,30.86],[-0.5,14.01,30.58],[-0.4,14.8,30.27],[-0.3,15.57,29.93],[-0.2,16.31,29.55],[-0.1,17.04,29.12]],"seconds":0.6},{"id":46109,"name":"Courtland Sutton","jersey":14,"aligned":"LWR","sep":[3.22,2.96,2.71,2.5,2.29,2.09,1.89,1.7,1.51,1.36],"near":[38592,38592,38592,38592,38592,38592,38592,38592,38592,38592],"open":[true,true,true,true,true,true,false,false,false,false],"trail":[[-3.2,-2.04,43.52],[-3.1,-2.03,43.52],[-3.0,-2.0,43.51],[-2.9,-1.93,43.53],[-2.8,-1.82,43.53],[-2.7,-1.66,43.55],[-2.6,-1.44,43.57],[-2.5,-1.12,43.59],[-2.4,-0.77,43.61],[-2.3,-0.37,43.61],[-2.2,0.08,43.62],[-2.1,0.6,43.62],[-2.0,1.15,43.62],[-1.9,1.75,43.62],[-1.8,2.37,43.62],[-1.7,3.03,43.62],[-1.6,3.72,43.63],[-1.5,4.44,43.65],[-1.4,5.18,43.66],[-1.3,5.93,43.69],[-1.2,6.71,43.72],[-1.1,7.51,43.74],[-1.0,8.34,43.78],[-0.9,9.16,43.81],[-0.8,9.99,43.85],[-0.7,10.83,43.88],[-0.6,11.67,43.9],[-0.5,12.52,43.91],[-0.4,13.37,43.9],[-0.3,14.23,43.86],[-0.2,15.09,43.79],[-0.1,15.94,43.69]],"seconds":0.6}],"either":1.0,"both":0.2,"eitherSeq":[true,true,true,true,true,true,true,true,true,true],"frames":[{"players":[[37174,"D",1.06,17.42],[38592,"D",11.48,44.5],[38642,"O",-5.81,18.59],[40608,"D",-3.23,22.19],[41258,"O",-7.74,23.3],[42358,"O",-0.65,21.52],[42391,"D",8.8,21.03],[43354,"D",-5.52,17.58],[43384,"O",-4.16,21.29],[43797,"D",9.82,29.84],[44815,"D",-4.57,25.07],[44832,"O",-6.96,25.43],[44987,"O",1.47,22.47],[45267,"O",9.93,31.64],[46109,"O",8.34,43.78],[46729,"D",6.99,13.82],[47787,"D",-6.94,26.15],[47803,"O",5.05,21.19],[47810,"D",8.52,36.18],[47824,"O",-5.13,24.21],[52491,"O",-4.27,22.32],[53472,"D",23.37,26.01]],"ball":[-7.53,23.17]},{"players":[[37174,"D",1.25,17.36],[38592,"D",12.03,44.53],[38642,"O",-6.07,18.62],[40608,"D",-3.32,22.25],[41258,"O",-7.84,23.18],[42358,"O",-0.33,21.19],[42391,"D",9.05,21.23],[43354,"D",-5.88,17.6],[43384,"O",-4.23,21.29],[43797,"D",10.08,29.96],[44815,"D",-4.81,25.1],[44832,"O",-7.21,25.28],[44987,"O",1.84,23.03],[45267,"O",10.75,31.47],[46109,"O",9.16,43.81],[46729,"D",7.45,14.01],[47787,"D",-7.2,25.98],[47803,"O",5.69,21.52],[47810,"D",8.82,36.48],[47824,"O",-5.35,24.24],[52491,"O",-4.37,22.37],[53472,"D",23.87,26.22]],"ball":[-7.71,22.93]},{"players":[[37174,"D",1.44,17.26],[38592,"D",12.61,44.56],[38642,"O",-6.31,18.66],[40608,"D",-3.4,22.31],[41258,"O",-7.91,23.06],[42358,"O",-0.02,20.82],[42391,"D",9.31,21.46],[43354,"D",-6.24,17.66],[43384,"O",-4.27,21.31],[43797,"D",10.36,30.06],[44815,"D",-4.98,25.12],[44832,"O",-7.43,25.15],[44987,"O",2.22,23.59],[45267,"O",11.57,31.29],[46109,"O",9.99,43.85],[46729,"D",7.91,14.22],[47787,"D",-7.45,25.81],[47803,"O",6.34,21.86],[47810,"D",9.12,36.81],[47824,"O",-5.55,24.28],[52491,"O",-4.45,22.42],[53472,"D",24.38,26.43]],"ball":[-7.85,22.55]},{"players":[[37174,"D",1.63,17.12],[38592,"D",13.22,44.6],[38642,"O",-6.56,18.7],[40608,"D",-3.47,22.37],[41258,"O",-7.95,22.93],[42358,"O",0.26,20.41],[42391,"D",9.56,21.71],[43354,"D",-6.62,17.74],[43384,"O",-4.3,21.34],[43797,"D",10.67,30.15],[44815,"D",-5.15,25.14],[44832,"O",-7.64,25.01],[44987,"O",2.59,24.17],[45267,"O",12.38,31.09],[46109,"O",10.83,43.88],[46729,"D",8.4,14.46],[47787,"D",-7.72,25.65],[47803,"O",7.02,22.2],[47810,"D",9.43,37.16],[47824,"O",-5.71,24.33],[52491,"O",-4.52,22.46],[53472,"D",24.89,26.63]],"ball":[-7.76,22.42]},{"players":[[37174,"D",1.8,16.95],[38592,"D",13.84,44.63],[38642,"O",-6.79,18.75],[40608,"D",-3.53,22.43],[41258,"O",-7.94,22.82],[42358,"O",0.49,19.95],[42391,"D",9.8,21.98],[43354,"D",-6.99,17.83],[43384,"O",-4.33,21.37],[43797,"D",11.01,30.21],[44815,"D",-5.28,25.13],[44832,"O",-7.84,24.91],[44987,"O",2.95,24.77],[45267,"O",13.2,30.86],[46109,"O",11.67,43.9],[46729,"D",8.9,14.72],[47787,"D",-7.97,25.51],[47803,"O",7.7,22.56],[47810,"D",9.74,37.53],[47824,"O",-5.87,24.38],[52491,"O",-4.57,22.51],[53472,"D",25.4,26.82]],"ball":[-7.66,22.37]},{"players":[[37174,"D",1.97,16.74],[38592,"D",14.47,44.65],[38642,"O",-7.03,18.8],[40608,"D",-3.58,22.48],[41258,"O",-7.9,22.72],[42358,"O",0.69,19.45],[42391,"D",10.03,22.28],[43354,"D",-7.38,17.93],[43384,"O",-4.35,21.4],[43797,"D",11.36,30.27],[44815,"D",-5.39,25.12],[44832,"O",-8.01,24.84],[44987,"O",3.29,25.38],[45267,"O",14.01,30.58],[46109,"O",12.52,43.91],[46729,"D",9.4,15.0],[47787,"D",-8.21,25.37],[47803,"O",8.39,22.95],[47810,"D",10.05,37.9],[47824,"O",-5.99,24.43],[52491,"O",-4.62,22.55],[53472,"D",25.92,26.99]],"ball":[-7.62,22.28]},{"players":[[37174,"D",2.13,16.51],[38592,"D",15.1,44.65],[38642,"O",-7.26,18.85],[40608,"D",-3.61,22.54],[41258,"O",-7.84,22.63],[42358,"O",0.85,18.91],[42391,"D",10.27,22.6],[43354,"D",-7.75,18.03],[43384,"O",-4.35,21.44],[43797,"D",11.73,30.33],[44815,"D",-5.45,25.08],[44832,"O",-8.16,24.8],[44987,"O",3.61,26.0],[45267,"O",14.8,30.27],[46109,"O",13.37,43.9],[46729,"D",9.9,15.29],[47787,"D",-8.44,25.26],[47803,"O",9.08,23.35],[47810,"D",10.34,38.26],[47824,"O",-6.07,24.47],[52491,"O",-4.66,22.6],[53472,"D",26.44,27.12]],"ball":[-7.61,22.19]},{"players":[[37174,"D",2.28,16.26],[38592,"D",15.74,44.64],[38642,"O",-7.49,18.9],[40608,"D",-3.6,22.58],[41258,"O",-7.76,22.55],[42358,"O",0.96,18.34],[42391,"D",10.49,22.94],[43354,"D",-8.12,18.13],[43384,"O",-4.34,21.48],[43797,"D",12.12,30.4],[44815,"D",-5.47,25.03],[44832,"O",-8.33,24.76],[44987,"O",3.9,26.63],[45267,"O",15.57,29.93],[46109,"O",14.23,43.86],[46729,"D",10.4,15.57],[47787,"D",-8.67,25.16],[47803,"O",9.77,23.76],[47810,"D",10.63,38.62],[47824,"O",-6.1,24.49],[52491,"O",-4.67,22.64],[53472,"D",26.94,27.23]],"ball":[-7.56,22.12]},{"players":[[37174,"D",2.42,16.02],[38592,"D",16.38,44.58],[38642,"O",-7.7,18.96],[40608,"D",-3.57,22.63],[41258,"O",-7.65,22.49],[42358,"O",1.03,17.74],[42391,"D",10.69,23.31],[43354,"D",-8.46,18.24],[43384,"O",-4.33,21.51],[43797,"D",12.53,30.48],[44815,"D",-5.43,24.97],[44832,"O",-8.5,24.74],[44987,"O",4.16,27.27],[45267,"O",16.31,29.55],[46109,"O",15.09,43.79],[46729,"D",10.92,15.84],[47787,"D",-8.94,25.06],[47803,"O",10.46,24.21],[47810,"D",10.89,38.96],[47824,"O",-6.11,24.5],[52491,"O",-4.66,22.68],[53472,"D",27.44,27.31]],"ball":[-7.46,22.08]},{"players":[[37174,"D",2.55,15.8],[38592,"D",17.02,44.51],[38642,"O",-7.92,19.02],[40608,"D",-3.51,22.67],[41258,"O",-7.54,22.43],[42358,"O",1.06,17.12],[42391,"D",10.86,23.71],[43354,"D",-8.77,18.32],[43384,"O",-4.33,21.54],[43797,"D",12.94,30.57],[44815,"D",-5.34,24.91],[44832,"O",-8.66,24.71],[44987,"O",4.39,27.92],[45267,"O",17.04,29.12],[46109,"O",15.94,43.69],[46729,"D",11.42,16.1],[47787,"D",-9.2,24.98],[47803,"O",11.13,24.7],[47810,"D",11.11,39.26],[47824,"O",-6.09,24.49],[52491,"O",-4.64,22.72],[53472,"D",27.92,27.36]],"ball":[-7.32,22.07]}]}],"funnel":[["Pass plays, weeks 1-8",8557],["Exactly two WR route runners",2034],["Single pass_forward frame",1788],["At least 10 frames before release",1788],["Complete receiver + defender positions (eligible)",1788],["Each WR in space 0.2-0.8 s (pair pool)",99]],"context":{"eligible":1788,"could_chain":166,"chained":83,"chained_share":0.5,"mean_added_when_chained":0.188},"sensitivity":[{"threshold":1.5,"play":"A","r1":0.8,"r2":0.9,"either":0.9,"both":0.8},{"threshold":1.5,"play":"B","r1":1.0,"r2":0.9,"either":1.0,"both":0.9},{"threshold":2.0,"play":"A","r1":0.6,"r2":0.6,"either":0.6,"both":0.6},{"threshold":2.0,"play":"B","r1":0.6,"r2":0.6,"either":1.0,"both":0.2},{"threshold":2.5,"play":"A","r1":0.4,"r2":0.4,"either":0.4,"both":0.4},{"threshold":2.5,"play":"B","r1":0.5,"r2":0.3,"either":0.8,"both":0.0}]};
+const N = D.window;
+const COLORS = { r: ["#d9682b", "#2b7bb9"], O: "#8b97a8", D: "#c2453d", ball: "#7a4a22" };
+const W = 500, PAD = 12;
+const pxPerYd = (W - 2 * PAD) / D.fieldWidth;
+const H = Math.round((D.xDomain[1] - D.xDomain[0]) * pxPerYd + 2 * PAD);
+const sx = d3.scaleLinear([D.fieldWidth, 0], [PAD, W - PAD]);   // sideline to sideline (offense's left on the left)
+const sy = d3.scaleLinear(D.xDomain, [H - PAD, PAD]);           // downfield is up
+const ringR = D.threshold * pxPerYd;
+const fmt = v => v.toFixed(1) + " s";
+const timeText = t => (t < 0 ? "−" : "") + Math.abs(t).toFixed(1) + " s before release";
+
+d3.select("#headline").text(D.headline);
+d3.select("#method").text(
+  `For each of the two wide receivers, the distance to the closest defender is measured in each of the ${N} frames ` +
+  `(${N / D.fps} s) immediately before the pass. A receiver is in space when that distance is at least ${D.threshold} yards. ` +
+  `Each frame counts 0.1 s. "Either" counts frames where at least one receiver is in space; "both" counts frames where both are.`);
+
+const legend = d3.select("#legend");
+[["Receiver 1", COLORS.r[0]], ["Receiver 2", COLORS.r[1]], ["Other offense", COLORS.O], ["Defense", COLORS.D]]
+  .forEach(([k, c]) => legend.append("span").html(`<i style="background:${c}"></i>${k}`));
+legend.append("span").html(`<i style="background:transparent;border:1.5px dashed #6b7280"></i>${D.threshold}-yard ring (filled = in space)`);
+
+const cards = d3.select("#plays").selectAll("article").data(D.plays).join("article").attr("class", "card");
+cards.each(function (p) { buildCard(d3.select(this), p); });
+
+function buildCard(card, p) {
+  card.append("div").attr("class", "tag").text(`Play ${p.key} · ${p.label}`);
+  card.append("h2").text(p.receivers.map(r => r.name).join(" & "));
+  card.append("div").attr("class", "meta").text(
+    `${p.offense} vs ${p.defense} · Week ${p.week} · Q${p.quarter} ${p.clock} · ` +
+    `${p.down}&${p.yardsToGo} · ${p.coverage} (${p.coverageType}) · ${p.result}`);
+
+  const totals = card.append("div").attr("class", "totals");
+  const stat = (v, k, cls) => { const s = totals.append("div").attr("class", "stat " + (cls || "")); s.append("div").attr("class", "v").text(v); s.append("div").attr("class", "k").text(k); };
+  stat(fmt(p.either), "either receiver in space", "main");
+  stat(fmt(p.both), "both in space");
+  p.receivers.forEach((r, i) => stat(fmt(r.seconds), r.name.split(" ").slice(-1)[0] + " alone"));
+  totals.selectAll(".stat").filter((d, i) => i >= 2).select(".v").style("color", (d, i) => COLORS.r[i]);
+
+  // ---- Field
+  const svg = card.append("svg").attr("viewBox", `0 0 ${W} ${H}`)
+    .attr("role", "img").attr("aria-label", `Field replay for play ${p.key}`);
+  svg.append("rect").attr("x", PAD).attr("y", PAD).attr("width", W - 2 * PAD).attr("height", H - 2 * PAD)
+    .attr("fill", "var(--turf)").attr("stroke", "var(--turf-line)");
+  const lines = d3.range(Math.ceil(D.xDomain[0] / 5) * 5, D.xDomain[1], 5);
+  svg.append("g").selectAll("line").data(lines).join("line")
+    .attr("x1", PAD).attr("x2", W - PAD).attr("y1", sy).attr("y2", sy)
+    .attr("stroke", d => d === 0 ? "var(--los)" : "var(--turf-line)").attr("stroke-width", d => d === 0 ? 2 : 1);
+  svg.append("g").selectAll("text").data(lines.filter(d => d !== 0)).join("text").attr("class", "yard-label")
+    .attr("x", PAD + 4).attr("y", d => sy(d) - 3).text(d => (d > 0 ? "+" : "") + d);
+  svg.append("text").attr("class", "yard-label").attr("x", PAD + 4).attr("y", sy(0) - 3)
+    .attr("fill", "var(--los)").style("fill", "var(--los)").text("line of scrimmage");
+  if (p.yardsToGo < D.xDomain[1]) {
+    svg.append("line").attr("x1", PAD).attr("x2", W - PAD).attr("y1", sy(p.yardsToGo)).attr("y2", sy(p.yardsToGo))
+      .attr("stroke", "var(--first)").attr("stroke-width", 2).attr("opacity", 0.8);
+  }
+
+  const gTrail = svg.append("g"), gRing = svg.append("g"), gLink = svg.append("g"),
+        gPlayers = svg.append("g"), gBall = svg.append("g"), gLabels = svg.append("g");
+  const line = d3.line().x(d => sx(d[2])).y(d => sy(d[1])).curve(d3.curveCatmullRom);
+
+  // ---- Strips: one row per receiver plus an "either" row
+  const LABEL = 128, CELL = (W - LABEL - 4) / N, ROW = 22, GAP = 7;
+  const rows = [
+    ...p.receivers.map((r, i) => ({ label: r.name, sub: `#${r.jersey} ${r.aligned}`, cells: r.open, color: COLORS.r[i] })),
+    { label: "Either in space", sub: "at least one receiver", cells: p.eitherSeq, color: "var(--either)" },
+  ];
+  const SH = rows.length * (ROW + GAP) + 18;
+  const strips = card.append("svg").attr("viewBox", `0 0 ${W} ${SH}`).style("margin-top", "10px")
+    .attr("role", "img").attr("aria-label", `Time in space by receiver for play ${p.key}`);
+  rows.forEach((row, ri) => {
+    const y = ri * (ROW + GAP);
+    if (ri === 2) strips.append("line").attr("x1", 0).attr("x2", W).attr("y1", y - GAP / 2).attr("y2", y - GAP / 2).attr("stroke", "var(--line)");
+    strips.append("text").attr("class", "strip-label").attr("x", 0).attr("y", y + 10).text(row.label);
+    strips.append("text").attr("class", "strip-sub").attr("x", 0).attr("y", y + 21).text(row.sub);
+    strips.append("g").selectAll("rect").data(row.cells).join("rect")
+      .attr("x", (d, i) => LABEL + i * CELL + 1).attr("y", y).attr("width", CELL - 2).attr("height", ROW).attr("rx", 3)
+      .style("fill", d => d ? row.color : "var(--closed)");
+  });
+  strips.append("g").selectAll("text").data(D.times).join("text").attr("class", "tick")
+    .attr("x", (d, i) => LABEL + i * CELL + CELL / 2).attr("y", SH - 4).attr("text-anchor", "middle")
+    .text(d => d.toFixed(1));
+  const marker = strips.append("rect").attr("y", -3).attr("height", rows.length * (ROW + GAP) - GAP + 6)
+    .attr("width", CELL + 2).attr("rx", 4).attr("fill", "none").attr("stroke", "var(--ink)").attr("stroke-width", 2);
+
+  card.append("p").attr("class", "desc").text(p.description);
+
+  p.draw = (step, dur) => {
+    const t = D.times[step];
+    const fr = p.frames[step];
+    const pos = new Map(fr.players.map(d => [d[0], d]));
+    const recIds = new Set(p.receivers.map(r => r.id));
+    const tr = sel => dur ? sel.transition().duration(dur).ease(d3.easeLinear) : sel;
+
+    gTrail.selectAll("path").data(p.receivers).join("path")
+      .attr("fill", "none").attr("stroke-width", 2).attr("stroke-linecap", "round").attr("opacity", 0.55)
+      .attr("stroke", (r, i) => COLORS.r[i])
+      .attr("d", r => line(r.trail.filter(q => q[0] <= t + 1e-6)));
+
+    const recs = p.receivers.map((r, i) => ({ r, i, me: pos.get(r.id), def: pos.get(r.near[step]), sep: r.sep[step], open: r.open[step] }));
+
+    tr(gRing.selectAll("circle").data(recs).join("circle")
+      .attr("stroke-width", 1.5)
+      .attr("stroke", d => d.open ? COLORS.r[d.i] : "#6b7280")
+      .attr("stroke-dasharray", d => d.open ? null : "4 3")
+      .attr("fill", d => COLORS.r[d.i]).attr("fill-opacity", d => d.open ? 0.18 : 0)
+      .attr("r", ringR))
+      .attr("cx", d => sx(d.me[3])).attr("cy", d => sy(d.me[2]));
+
+    tr(gLink.selectAll("line").data(recs).join("line")
+      .attr("stroke", d => d.open ? COLORS.r[d.i] : "#6b7280").attr("stroke-width", 1.5))
+      .attr("x1", d => sx(d.me[3])).attr("y1", d => sy(d.me[2]))
+      .attr("x2", d => sx(d.def[3])).attr("y2", d => sy(d.def[2]));
+
+    tr(gPlayers.selectAll("circle").data(fr.players, d => d[0]).join("circle")
+      .attr("r", d => recIds.has(d[0]) ? 7 : 5)
+      .attr("fill", d => recIds.has(d[0]) ? COLORS.r[p.receivers.findIndex(r => r.id === d[0])] : COLORS[d[1]])
+      .attr("stroke", "#fff").attr("stroke-width", 1.2))
+      .attr("cx", d => sx(d[3])).attr("cy", d => sy(d[2]));
+
+    tr(gBall.selectAll("ellipse").data([fr.ball]).join("ellipse")
+      .attr("rx", 4).attr("ry", 2.6).attr("fill", COLORS.ball))
+      .attr("cx", d => sx(d[1])).attr("cy", d => sy(d[0]));
+
+    const labels = gLabels.selectAll("g.rl").data(recs).join(enter => {
+      const g = enter.append("g").attr("class", "rl");
+      g.append("text").attr("class", "rec-label").attr("text-anchor", "middle");
+      g.append("text").attr("class", "sep-label").attr("text-anchor", "start");
+      return g;
+    });
+    labels.select(".rec-label").style("fill", d => COLORS.r[d.i]).text(d => d.r.name.split(" ").slice(-1)[0]);
+    labels.select(".sep-label").style("fill", d => d.open ? COLORS.r[d.i] : "#4b5563").text(d => d.sep.toFixed(1) + " yd");
+    tr(labels.select(".rec-label")).attr("x", d => sx(d.me[3])).attr("y", d => sy(d.me[2]) - ringR - 4);
+    tr(labels.select(".sep-label")).attr("x", d => sx(d.me[3]) + ringR + 4).attr("y", d => sy(d.me[2]) + 4);
+
+    marker.attr("x", LABEL + step * CELL);
+  };
+}
+
+// ---- Shared time control
+const slider = d3.select("#slider").attr("max", N - 1);
+let step = 0, timer = null;
+function show(s, dur) {
+  step = s;
+  slider.property("value", s).attr("aria-valuetext", timeText(D.times[s]));
+  d3.select("#time").text(timeText(D.times[s]));
+  D.plays.forEach(p => p.draw(s, dur));
+}
+slider.on("input", e => { stop(); show(+e.target.value, 0); });
+function stop() { if (timer) { timer.stop(); timer = null; } d3.select("#play").text("Play"); }
+d3.select("#play").on("click", () => {
+  if (timer) return stop();
+  d3.select("#play").text("Pause");
+  if (step === N - 1) show(0, 0);
+  timer = d3.interval(() => {
+    if (step === N - 1) return stop();
+    show(step + 1, 380);
+  }, 450);
+});
+show(0, 0);
+
+// ---- Method tables
+const sens = d3.select("#sens");
+sens.append("tr").html("<th>Threshold</th><th>A either</th><th>A both</th><th>B either</th><th>B both</th>");
+d3.groups(D.sensitivity, d => d.threshold).forEach(([th, rs]) => {
+  const a = rs.find(r => r.play === "A"), b = rs.find(r => r.play === "B");
+  sens.append("tr").html(`<td>${th.toFixed(1)} yd</td><td>${fmt(a.either)}</td><td>${fmt(a.both)}</td><td>${fmt(b.either)}</td><td>${fmt(b.both)}</td>`)
+    .style("font-weight", th === D.threshold ? 700 : null);
+});
+const funnel = d3.select("#funnel");
+D.funnel.forEach(([k, v]) => funnel.append("tr").html(`<td>${k}</td><td>${v.toLocaleString()}</td>`));
+d3.select("#context").text(
+  `On ${D.context.could_chain.toLocaleString()} eligible plays, both receivers had some space but neither was open the whole second. ` +
+  `Their windows chained (someone open longer than the better receiver alone) on ${D.context.chained.toLocaleString()} of them ` +
+  `(${Math.round(100 * D.context.chained_share)}%), adding ${D.context.mean_added_when_chained.toFixed(2)} s on average.`);
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script></head>
+<body style="margin:0;font-family:system-ui,sans-serif;background:#fff">
+<svg id="s" width="220" height="80"></svg>
+<script>
+  const s = d3.select("#s");
+  s.append("circle").attr("cx", 110).attr("cy", 34).attr("r", 14).attr("fill", "#d9682b");
+  s.append("text").attr("x", 110).attr("y", 72).attr("text-anchor", "middle")
+   .attr("font-size", 12).text("D3 " + d3.version + " is working");
+</script></body></html>
